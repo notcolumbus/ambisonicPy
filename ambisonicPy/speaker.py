@@ -2,9 +2,7 @@ import numpy as np
 import soundfile as sf
 from typing import Dict, Tuple, Any
 
-from .effects import EFFECT_HANDLERS
 from .audio_processing import DistanceFilter
-from .rendering import render_ambisonic_and_binaural
 
 
 class Speaker():
@@ -72,30 +70,3 @@ class Speaker():
             self.add_effect((last_start, track_duration), effect_dict)
         
         print(f"Added {len(beat_times)} beat-synced '{effect_type}' effects")
-    
-    def render(self, output_path="output.wav", sofa_path=None):
-        
-        n_samples = len(self.mono_track)
-        self.azimuth = np.zeros(n_samples, dtype=np.float32)
-        self.elevation = np.full(n_samples, np.pi/2, dtype=np.float32)
-        self.distance = np.ones(n_samples, dtype=np.float32)
-        
-        sorted_effects = sorted(self.effects.items(), key=lambda x: x[0][0])
-        
-        for (start_time, end_time), effect in sorted_effects:
-            start_sample = int(start_time * self.fs)
-            end_sample = int(end_time * self.fs)
-            effect_type = effect.get('type')
-            
-            handler = EFFECT_HANDLERS.get(effect_type)
-            if handler:
-                handler(self.azimuth, self.elevation, self.distance,
-                       start_sample, end_sample, effect, self.fs)
-            else:
-                print(f"Warning: Unknown effect type '{effect_type}' - skipping")
-        
-        return render_ambisonic_and_binaural(
-            self.mono_track, self.azimuth, self.elevation, self.distance,
-            self.distance_filter, self.ambi_order, self.fs,
-            self.output_format, output_path, sofa_path
-        )
