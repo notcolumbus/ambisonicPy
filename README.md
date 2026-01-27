@@ -1,2 +1,2 @@
 # ambisonicPy
-A Python Framework for ambisonic/spatial audio development
+A Python Framework for ambisonic/spatial audio development j
