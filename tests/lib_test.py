@@ -5,7 +5,7 @@ from ambisonicPy import Speaker, SoundStage
 
 def test_basic_pass():
     dummy_audio_file, fs = "dummy.wav", 44100
-    output_file = "lib_test_output.wav"
+    output_file = "lib_test_output_ambisonic.wav"
 
     try:
         data = np.random.uniform(-0.5, 0.5, int(1 * fs)).astype(np.float32)
