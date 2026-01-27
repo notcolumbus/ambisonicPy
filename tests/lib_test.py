@@ -5,7 +5,7 @@ from ambisonicPy import Speaker, SoundStage
 
 def test_basic_pass():
     dummy_audio_file, fs = "dummy.wav", 44100
-    output_file = "lib_test_output_ambisonic.wav"
+    output_file = "lib_test_output.wav"
 
     try:
         data = np.random.uniform(-0.5, 0.5, int(1 * fs)).astype(np.float32)
@@ -22,11 +22,12 @@ def test_basic_pass():
         stage.add_speaker(speaker)
         stage.render(output_path=output_file)
 
-        assert os.path.exists(output_file)
+        assert os.path.exists(output_file.rsplit('.', 1)[0] + "_ambisonic.wav")
 
     finally:
         if os.path.exists(dummy_audio_file):
             os.remove(dummy_audio_file)
-        if os.path.exists(output_file):
-            os.remove(output_file)
+        if os.path.exists(output_file.rsplit('.', 1)[0] + "_ambisonic.wav"):
+            os.remove(output_file.rsplit('.', 1)[0] + "_ambisonic.wav")
+
 
