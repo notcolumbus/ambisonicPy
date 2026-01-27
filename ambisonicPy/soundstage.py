@@ -8,9 +8,10 @@ from .effects import EFFECT_HANDLERS
 
 class SoundStage:
     
-    def __init__(self, output_format='binaural'):
+    def __init__(self, output_format='binaural', ambi_order=1):
         self.speakers = []
         self.output_format = output_format
+        self.ambi_order = int(ambi_order)
         self.fs = None
     
     def add_speaker(self, speaker):
@@ -25,17 +26,16 @@ class SoundStage:
             raise ValueError("No speakers added to soundstage")
         
         max_samples = max(len(s.mono_track) for s in self.speakers)
-        ambi_order = self.speakers[0].ambi_order
-        n_channels = (ambi_order + 1) ** 2
+        n_channels = (self.ambi_order + 1) ** 2
         
         # Accumulate ambisonic signals from all speakers
         ambi_mixed = np.zeros((n_channels, max_samples), dtype=np.float32)
         
         # Compute EQ filter once (shared across all speakers)
-        w_taper = spa.sph.max_rE_weights(ambi_order)
+        w_taper = spa.sph.max_rE_weights(self.ambi_order)
         n_freq = 512
         freq = np.linspace(0, self.fs/2, n_freq)
-        gain_curve = spa.sph.binaural_coloration_compensation(ambi_order, f=freq, r_0=0.0875, w_taper=w_taper)
+        gain_curve = spa.sph.binaural_coloration_compensation(self.ambi_order, f=freq, r_0=0.0875, w_taper=w_taper)
         gain_linear = 10**(gain_curve/20)
         gain_linear_clipped = spa.process.gain_clipping(gain_linear, threshold=spa.utils.from_db(12))
         gain_curve = 20 * np.log10(gain_linear_clipped)
@@ -65,7 +65,7 @@ class SoundStage:
             
             for start in range(0, n_samples, 4096):
                 end = min(start + 4096, n_samples)
-                Y = spa.sph.sh_matrix(ambi_order, azimuth[start:end], elevation[start:end])
+                Y = spa.sph.sh_matrix(self.ambi_order, azimuth[start:end], elevation[start:end])
                 Y_tapered = Y * w_taper_repeated
                 filtered = speaker.distance_filter.process_block(mono_eq[start:end], distance[start:end])
                 
@@ -78,7 +78,7 @@ class SoundStage:
         # Decode to final output format
         if self.output_format == 'binaural':
             hrirs = spa.io.load_sofa_hrirs(sofa_path) if sofa_path else spa.io.load_hrirs(self.fs)
-            hrirs_decoded = spa.decoder.magls_bin(hrirs, ambi_order)
+            hrirs_decoded = spa.decoder.magls_bin(hrirs, self.ambi_order)
             stereo = spa.decoder.sh2bin(ambi_mixed, hrirs_decoded)
             stereo = stereo / np.max(np.abs(stereo) + 1e-8)
             final_path = output_path.rsplit('.', 1)[0] + "_binaural.wav"

@@ -7,26 +7,17 @@ from .audio_processing import DistanceFilter
 
 class Speaker():
     
-    def __init__(self, track, order=1, output_format='binaural', 
-                 lp_base=10000.0, lp_rolloff=1.0, distance_rolloff=1.0):
-        
-        self.ambi_order = order
-        self.output_format = output_format
+    def __init__(self, track, lp_base=10000.0, lp_rolloff=1.0, distance_rolloff=1.0):
         self.track, self.fs = sf.read(track, always_2d=True)
         self.mono_track = np.mean(self.track, axis=1).astype(np.float32)
-        
         self.distance_filter = DistanceFilter(self.fs, lp_base, lp_rolloff)
         self.distance_rolloff = float(distance_rolloff)
-        
         n_samples = len(self.mono_track)
         self.azimuth = np.zeros(n_samples, dtype=np.float32)
         self.elevation = np.full(n_samples, np.pi/2, dtype=np.float32)
         self.distance = np.ones(n_samples, dtype=np.float32)
-        
-        self.effects = {} 
-        
+        self.effects = {}
         print(f"Loaded {len(self.mono_track)} samples at {self.fs} Hz")
-        print(f"Output format: {self.output_format}")
     
     def add_effect(self, time_range: Tuple[float, float], effect: Dict[str, Any]):
         
