@@ -18,7 +18,7 @@ def test_basic_pass():
             "end": (np.pi, np.pi/2, 1.0)
         })
 
-        stage = SoundStage(output_format='binaural', ambi_order=1)
+        stage = SoundStage(output_format='ambisonic', ambi_order=1)
         stage.add_speaker(speaker)
         stage.render(output_path=output_file)
 
