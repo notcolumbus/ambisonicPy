@@ -2,7 +2,8 @@ import numpy as np
 import soundfile as sf
 import spaudiopy as spa
 from scipy import signal
-
+# Add to imports at the top
+from .audio_processing import DistanceFilter, PERCEPTUAL_EFFECTS
 from .effects import EFFECT_HANDLERS
 
 
@@ -21,11 +22,21 @@ class SoundStage:
             raise ValueError(f"Sample rate mismatch: {self.fs} vs {speaker.fs}")
         self.speakers.append(speaker)
     
-    def render(self, output_path="soundstage.wav", sofa_path=None):
+    def render(self, output_path="soundstage.wav", sofa_path=None, max_duration=None):
         if not self.speakers:
             raise ValueError("No speakers added to soundstage")
-        
-        max_samples = max(len(s.mono_track) for s in self.speakers)
+
+        if max_duration is not None and max_duration <= 0:
+            raise ValueError("max_duration must be positive")
+
+        speaker_samples = []
+        for speaker in self.speakers:
+            n_samples = len(speaker.mono_track)
+            if max_duration is not None:
+                n_samples = min(n_samples, int(max_duration * speaker.fs))
+            speaker_samples.append(n_samples)
+
+        max_samples = max(speaker_samples)
         n_channels = (self.ambi_order + 1) ** 2
         
         # Accumulate ambisonic signals from all speakers
@@ -42,9 +53,8 @@ class SoundStage:
         eq_filter = signal.firwin2(1025, freq, 10**(gain_curve/20), fs=self.fs)
         w_taper_repeated = spa.sph.repeat_per_order(w_taper)
         
-        for speaker in self.speakers:
+        for speaker, n_samples in zip(self.speakers, speaker_samples):
             # Apply effects to get position trajectories
-            n_samples = len(speaker.mono_track)
             azimuth = np.zeros(n_samples, dtype=np.float32)
             elevation = np.full(n_samples, np.pi/2, dtype=np.float32)
             distance = np.ones(n_samples, dtype=np.float32)
@@ -52,13 +62,46 @@ class SoundStage:
             sorted_effects = sorted(speaker.effects.items(), key=lambda x: x[0][0])
             for (start_time, end_time), effect in sorted_effects:
                 start_idx = int(start_time * speaker.fs)
-                end_idx = int(end_time * speaker.fs)
+                end_idx = min(int(end_time * speaker.fs), n_samples)
+                if end_idx <= start_idx:
+                    continue
                 handler = EFFECT_HANDLERS.get(effect.get('type'))
                 if handler:
                     handler(azimuth, elevation, distance, start_idx, end_idx, effect, speaker.fs)
             
             # Apply EQ and encode to ambisonics
-            mono_eq = signal.lfilter(eq_filter, 1.0, speaker.mono_track)
+            mono_eq = signal.lfilter(eq_filter, 1.0, speaker.mono_track[:n_samples])
+
+            # Apply perceptual audio effects.
+            for effect_type, kwargs in speaker.audio_effects:
+                fn = PERCEPTUAL_EFFECTS.get(effect_type)
+                if fn is None:
+                    print(f"Warning: unknown audio effect '{effect_type}', skipping.")
+                    continue
+
+                # These two effects depend on distance
+                if effect_type == 'sound_muffle':
+                    mean_dist = float(np.mean(distance))
+                    mono_eq = fn(mono_eq, speaker.fs, distance=mean_dist, **kwargs)
+
+                elif effect_type == 'near_field':
+                    mean_dist = float(np.mean(distance))
+                    mono_eq = fn(mono_eq, speaker.fs, distance=mean_dist, **kwargs)
+
+                elif effect_type == 'doppler':
+                    # Use start and end of the distance trajectory for the pitch shift
+                    d_start = float(distance[0])
+                    d_end   = float(distance[-1])
+                    mono_eq = fn(mono_eq, speaker.fs,
+                                distance_start=d_start, distance_end=d_end, **kwargs)
+
+                elif effect_type == 'early_reflections':
+                    mean_dist = float(np.mean(distance))
+                    mono_eq = fn(mono_eq, speaker.fs, distance=mean_dist, **kwargs)
+
+                else:
+                    # Effects like source_width don't need distance — just pass kwargs through
+                    mono_eq = fn(mono_eq, speaker.fs, **kwargs)
             speaker.distance_filter.reset_state()
             
             ambi_signals = np.zeros((n_channels, n_samples), dtype=np.float32)
